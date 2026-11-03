@@ -1,4 +1,4 @@
-name: Calculator
+name: Chat
 options:
   bundleIdPrefix: com.deltauser123456
   deploymentTarget:
@@ -8,14 +8,14 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
 targets:
-  Calculator:
+  Chat:
     type: application
     platform: iOS
     sources:
       - path: Calculator
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.deltauser123456.Calculator
+        PRODUCT_BUNDLE_IDENTIFIER: com.deltauser123456.Chat
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         GENERATE_INFOPLIST_FILE: YES
