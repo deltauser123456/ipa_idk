@@ -121,7 +121,8 @@ struct AuthView: View {
                     if let authError { error = authError.localizedDescription; return }
                     guard let signedInUser = authResult?.user else { return }
                     db.collection("users").document(signedInUser.uid).setData([
-                        "email": signedInUser.email ?? "",
+                        "email": (signedInUser.email ?? "").lowercased(),
+                        "emailLower": (signedInUser.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                         "displayName": signedInUser.displayName ?? "Chat user",
                         "createdAt": FieldValue.serverTimestamp()
                     ], merge: true)
@@ -140,6 +141,7 @@ struct AuthView: View {
                 if let user = result?.user {
                     db.collection("users").document(user.uid).setData([
                         "email": cleanEmail,
+                        "emailLower": cleanEmail,
                         "displayName": user.displayName ?? cleanEmail,
                         "createdAt": FieldValue.serverTimestamp()
                     ], merge: true)
@@ -245,8 +247,22 @@ struct ChatHomeView: View {
             } message: { Text(error) }
         }
         .tint(.cyan)
-        .onAppear(perform: listen)
+        .onAppear {
+            saveProfile()
+            listen()
+        }
         .onDisappear { listener?.remove(); listener = nil }
+    }
+
+    private func saveProfile() {
+        let cleanEmail = (user.email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !cleanEmail.isEmpty else { return }
+        db.collection("users").document(user.uid).setData([
+            "email": cleanEmail,
+            "emailLower": cleanEmail,
+            "displayName": user.displayName ?? cleanEmail,
+            "updatedAt": FieldValue.serverTimestamp()
+        ], merge: true)
     }
 
     private func listen() {
@@ -274,7 +290,7 @@ struct ChatHomeView: View {
         guard !email.isEmpty, email != (user.email ?? "").lowercased() else {
             error = "Enter a different account email."; return
         }
-        db.collection("users").whereField("email", isEqualTo: email).limit(to: 1).getDocuments { snapshot, err in
+        db.collection("users").whereField("emailLower", isEqualTo: email).limit(to: 1).getDocuments { snapshot, err in
             if let err { error = err.localizedDescription; return }
             guard let recipient = snapshot?.documents.first else {
                 error = "No Chat account was found for that email. Ask them to create an account first."; return
