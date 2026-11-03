@@ -1,6 +1,8 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import GoogleSignIn
+import UIKit
 
 private let db = Firestore.firestore()
 
@@ -60,6 +62,21 @@ struct AuthView: View {
                 if !error.isEmpty {
                     Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
                 }
+                Button(action: signInWithGoogle) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "g.circle.fill").font(.title3)
+                        Text("Continue with Google").bold()
+                    }
+                    .frame(maxWidth: .infinity).padding()
+                    .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                    .foregroundStyle(.black)
+                }
+                .disabled(busy)
+                HStack {
+                    Rectangle().fill(.white.opacity(0.2)).frame(height: 1)
+                    Text("OR").font(.caption.bold()).foregroundStyle(.white.opacity(0.45))
+                    Rectangle().fill(.white.opacity(0.2)).frame(height: 1)
+                }
                 Button(action: submit) {
                     HStack {
                         if busy { ProgressView().tint(.black) }
@@ -76,6 +93,40 @@ struct AuthView: View {
                 .font(.footnote).foregroundStyle(.cyan)
             }
             .padding(26)
+        }
+    }
+
+
+    private func signInWithGoogle() {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+              let presenter = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+            error = "Couldn't open Google sign-in. Please try again."
+            return
+        }
+        busy = true
+        error = ""
+        GIDSignIn.sharedInstance.signIn(withPresenting: presenter) { result, signInError in
+            if let signInError {
+                DispatchQueue.main.async { busy = false; error = signInError.localizedDescription }
+                return
+            }
+            guard let result, let idToken = result.user.idToken?.tokenString else {
+                DispatchQueue.main.async { busy = false; error = "Google sign-in didn't return an ID token." }
+                return
+            }
+            let credential = GoogleAuthProvider.credential(withIDToken: idToken, accessToken: result.user.accessToken.tokenString)
+            Auth.auth().signIn(with: credential) { authResult, authError in
+                DispatchQueue.main.async {
+                    busy = false
+                    if let authError { error = authError.localizedDescription; return }
+                    guard let signedInUser = authResult?.user else { return }
+                    db.collection("users").document(signedInUser.uid).setData([
+                        "email": signedInUser.email ?? "",
+                        "displayName": signedInUser.displayName ?? "Chat user",
+                        "createdAt": FieldValue.serverTimestamp()
+                    ], merge: true)
+                }
+            }
         }
     }
 
