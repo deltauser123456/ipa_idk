@@ -229,11 +229,12 @@ struct ChatHomeView: View {
                 error = "No Chat account was found for that email. Ask them to create an account first."; return
             }
             let otherUID = recipient.documentID
-            let ids = [user.uid, otherUID].sorted()
+            let participants = [(user.uid, user.email ?? ""), (otherUID, email)].sorted { $0.0 < $1.0 }
+            let ids = participants.map { $0.0 }
+            let emails = participants.map { $0.1 }
             db.collection("chats").whereField("participantUIDs", isEqualTo: ids).limit(to: 1).getDocuments { existing, findError in
                 if let findError { error = findError.localizedDescription; return }
                 if existing?.documents.first != nil { return }
-                let emails = [user.email ?? "", email]
                 db.collection("chats").addDocument(data: [
                     "participantUIDs": ids,
                     "participantEmails": emails,
