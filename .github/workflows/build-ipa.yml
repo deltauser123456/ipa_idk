@@ -1,4 +1,4 @@
-name: Build Calculator IPA
+name: Build Chat IPA
 
 on:
   workflow_dispatch:
@@ -21,8 +21,8 @@ jobs:
       - name: Build unsigned iOS app
         run: |
           xcodebuild \
-            -project Calculator.xcodeproj \
-            -scheme Calculator \
+            -project Chat.xcodeproj \
+            -scheme Chat \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
@@ -31,12 +31,12 @@ jobs:
       - name: Package IPA
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/Calculator.app Payload/
-          /usr/bin/zip -r Calculator.ipa Payload
+          cp -R build/Build/Products/Release-iphoneos/Chat.app Payload/
+          /usr/bin/zip -r Chat.ipa Payload
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Calculator-unsigned-IPA
-          path: Calculator.ipa
+          name: Chat-unsigned-IPA
+          path: Chat.ipa
           if-no-files-found: error
