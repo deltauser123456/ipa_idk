@@ -4,9 +4,16 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+
     function isParticipant(chatId) {
       return signedIn()
         && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participantUIDs;
+    }
+
+    function otherParticipant(chatId, uid) {
+      return get(/databases/$(database)/documents/chats/$(chatId)).data.participantUIDs
+        .hasAny([uid])
+        && uid != request.auth.uid;
     }
 
     match /users/{uid} {
@@ -37,6 +44,41 @@ service cloud.firestore {
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 4000;
         allow update, delete: if false;
+      }
+
+      match /calls/{callId} {
+        allow read: if isParticipant(chatId);
+
+        allow create: if isParticipant(chatId)
+          && request.resource.data.keys().hasOnly([
+            'callerUID', 'calleeUID', 'status', 'type', 'roomName', 'createdAt'
+          ])
+          && request.resource.data.callerUID == request.auth.uid
+          && request.resource.data.calleeUID is string
+          && otherParticipant(chatId, request.resource.data.calleeUID)
+          && request.resource.data.status == 'ringing'
+          && request.resource.data.type in ['audio', 'video']
+          && request.resource.data.roomName == 'chat_' + chatId
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if isParticipant(chatId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
+          && (
+            (
+              request.auth.uid == resource.data.calleeUID
+              && resource.data.status == 'ringing'
+              && request.resource.data.status in ['accepted', 'declined']
+            )
+            ||
+            (
+              request.auth.uid == resource.data.callerUID
+              && resource.data.status in ['ringing', 'accepted']
+              && request.resource.data.status == 'ended'
+            )
+          );
+
+        allow delete: if false;
       }
     }
   }
