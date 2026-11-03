@@ -335,6 +335,8 @@ struct LiveConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            ChatCallButtons(chatID: chat.id)
+                .padding(.top, 8)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
