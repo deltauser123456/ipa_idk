@@ -8,6 +8,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+
+        // Configure Google Sign-In with this Firebase app's OAuth client ID.
+        if let clientID = FirebaseApp.app()?.options.clientID, !clientID.isEmpty {
+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        }
         return true
     }
 }
