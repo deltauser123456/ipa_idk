@@ -98,6 +98,10 @@ struct AuthView: View {
 
 
     private func signInWithGoogle() {
+        guard GIDSignIn.sharedInstance.configuration != nil else {
+            error = "Google Sign-In isn't configured. Check the Firebase GoogleService-Info.plist client ID."
+            return
+        }
         guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
               let presenter = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
             error = "Couldn't open Google sign-in. Please try again."
