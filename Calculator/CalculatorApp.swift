@@ -1,10 +1,10 @@
 import SwiftUI
 
 @main
-struct CalculatorApp: App {
+struct ChatApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ChatHomeView()
                 .preferredColorScheme(.dark)
         }
     }
