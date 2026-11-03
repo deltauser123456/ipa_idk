@@ -13,6 +13,8 @@ targets:
     platform: iOS
     sources:
       - path: Calculator
+    resources:
+      - path: Calculator/GoogleService-Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.deltauser123456.Chat
