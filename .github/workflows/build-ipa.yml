@@ -15,6 +15,17 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Add Firebase configuration
+        env:
+          GOOGLE_SERVICE_INFO_PLIST: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          if [ -z "$GOOGLE_SERVICE_INFO_PLIST" ]; then
+            echo "Missing GOOGLE_SERVICE_INFO_PLIST repository secret."
+            exit 1
+          fi
+          mkdir -p Calculator
+          printf '%s' "$GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > Calculator/GoogleService-Info.plist
+
       - name: Generate Xcode project
         run: xcodegen generate
 
