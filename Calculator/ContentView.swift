@@ -1,151 +1,325 @@
 import SwiftUI
 
-struct ContentView: View {
-    @State private var display = "0"
-    @State private var storedValue: Double?
-    @State private var pendingOperation: String?
-    @State private var startsNewNumber = true
-    @State private var lastOperation: String?
-    @State private var lastOperand: Double?
+struct ChatMessage: Identifiable {
+    let id = UUID()
+    let text: String
+    let isMine: Bool
+    let time = Date()
+}
 
-    private let rows = [
-        ["AC", "+/-", "%", "÷"],
-        ["7", "8", "9", "×"],
-        ["4", "5", "6", "−"],
-        ["1", "2", "3", "+"],
-        ["0", ".", "="]
+struct ChatConversation: Identifiable {
+    let id = UUID()
+    var name: String
+    var members: [String]
+    var isGroup: Bool
+    var messages: [ChatMessage]
+    var lastMessage: String { messages.last?.text ?? "Start a conversation" }
+}
+
+struct ChatHomeView: View {
+    @State private var chats: [ChatConversation] = [
+        ChatConversation(name: "Alex", members: ["Alex"], isGroup: false,
+                         messages: [ChatMessage(text: "Hey! What's up?", isMine: false)]),
+        ChatConversation(name: "Weekend crew", members: ["Alex", "Sam", "Jordan"], isGroup: true,
+                         messages: [ChatMessage(text: "Anyone free this weekend?", isMine: false)])
     ]
+    @State private var showingNewChat = false
+    @State private var showingNewGroup = false
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 12) {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text(display)
-                        .font(.system(size: min(geometry.size.width * 0.19, 76), weight: .light, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.35)
-                        .contentTransition(.numericText())
-                        .padding(.horizontal, 8)
-                }
-                .frame(height: geometry.size.height * 0.22)
-
-                ForEach(rows, id: \.self) { row in
-                    HStack(spacing: 12) {
-                        ForEach(row, id: \.self) { item in
-                            Button {
-                                withAnimation(.easeOut(duration: 0.12)) { tap(item) }
-                            } label: {
-                                Text(item)
-                                    .font(.system(size: 29, weight: .medium, design: .rounded))
-                                    .foregroundStyle(textColor(item))
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: (geometry.size.height * 0.66 - 48) / 5)
-                                    .background(buttonColor(item), in: Capsule())
+        NavigationStack {
+            ZStack {
+                Color(red: 0.04, green: 0.05, blue: 0.08).ignoresSafeArea()
+                VStack(spacing: 0) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("MESSAGES")
+                                .font(.caption.weight(.bold))
+                                .tracking(2)
+                                .foregroundStyle(.cyan)
+                            Text("Chats")
+                                .font(.largeTitle.bold())
+                        }
+                        Spacer()
+                        Button { showingNewChat = true } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.title3.weight(.semibold))
+                                .frame(width: 44, height: 44)
+                                .background(Color.white.opacity(0.10), in: Circle())
+                        }
+                        .accessibilityLabel("New chat")
+                        Menu {
+                            Button { showingNewChat = true } label: {
+                                Label("New solo chat", systemImage: "person")
                             }
-                            .buttonStyle(.plain)
-                            .frame(maxWidth: .infinity)
+                            Button { showingNewGroup = true } label: {
+                                Label("New group chat", systemImage: "person.3")
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.title3.bold())
+                                .frame(width: 44, height: 44)
+                                .background(Color.cyan, in: Circle())
+                                .foregroundStyle(.black)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .padding(.bottom, 22)
+
+                    if chats.isEmpty {
+                        ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.bubble.right",
+                                               description: Text("Start a solo chat or create a group."))
+                            .foregroundStyle(.white)
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 8) {
+                                ForEach(chats) { chat in
+                                    NavigationLink {
+                                        ConversationView(chat: chat) { updated in
+                                            if let index = chats.firstIndex(where: { $0.id == updated.id }) {
+                                                chats[index] = updated
+                                            }
+                                        }
+                                    } label: {
+                                        ChatRow(chat: chat)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    HStack {
+                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
+                            .foregroundStyle(.cyan)
+                        Spacer()
+                        Label("Calls", systemImage: "phone")
+                            .foregroundStyle(.white.opacity(0.5))
+                        Spacer()
+                        Label("You", systemImage: "person.crop.circle")
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 34)
+                    .padding(.vertical, 16)
+                    .background(Color.white.opacity(0.04))
+                }
+            }
+            .foregroundStyle(.white)
+            .sheet(isPresented: $showingNewChat) {
+                NewChatSheet(title: "New solo chat", group: false) { name in
+                    chats.insert(ChatConversation(name: name, members: [name], isGroup: false, messages: []), at: 0)
+                }
+            }
+            .sheet(isPresented: $showingNewGroup) {
+                NewChatSheet(title: "Create group", group: true) { name in
+                    chats.insert(ChatConversation(name: name, members: ["You", "Alex", "Sam"], isGroup: true, messages: []), at: 0)
+                }
+            }
+        }
+        .tint(.cyan)
+    }
+}
+
+struct ChatRow: View {
+    let chat: ChatConversation
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(chat.isGroup ? Color.purple.opacity(0.25) : Color.cyan.opacity(0.18))
+                Image(systemName: chat.isGroup ? "person.3.fill" : "person.fill")
+                    .font(.title2)
+                    .foregroundStyle(chat.isGroup ? .purple : .cyan)
+            }
+            .frame(width: 54, height: 54)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text(chat.name).font(.headline)
+                    Spacer()
+                    Text(chat.messages.isEmpty ? "" : "now")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+                Text(chat.lastMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white.opacity(0.25))
+        }
+        .padding(13)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+struct ConversationView: View {
+    @State var chat: ChatConversation
+    var onUpdate: (ChatConversation) -> Void
+    @State private var draft = ""
+    @State private var showingCall = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(chat.name).font(.headline)
+                    Text(chat.isGroup ? "\(chat.members.count) members" : "Direct message")
+                        .font(.caption).foregroundStyle(.white.opacity(0.5))
+                }
+                Spacer()
+                Button { showingCall = true } label: {
+                    Image(systemName: "phone.fill")
+                        .font(.title3)
+                        .foregroundStyle(.black)
+                        .frame(width: 42, height: 42)
+                        .background(.cyan, in: Circle())
+                }
+                .accessibilityLabel("Call")
+            }
+            .padding()
+            .background(Color.white.opacity(0.04))
+
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(chat.messages) { message in
+                        HStack {
+                            if message.isMine { Spacer(minLength: 55) }
+                            Text(message.text)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 11)
+                                .foregroundStyle(message.isMine ? .black : .white)
+                                .background(message.isMine ? Color.cyan : Color.white.opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 18))
+                            if !message.isMine { Spacer(minLength: 55) }
                         }
                     }
                 }
+                .padding()
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 12)
-            .padding(.bottom, 18)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.ignoresSafeArea())
+            HStack(spacing: 10) {
+                TextField("Message...", text: $draft, axis: .vertical)
+                    .lineLimit(1...4)
+                    .padding(12)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+                    .foregroundStyle(.white)
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.headline.bold())
+                        .foregroundStyle(.black)
+                        .frame(width: 42, height: 42)
+                        .background(.cyan, in: Circle())
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding()
+            .background(Color.black)
+        }
+        .background(Color(red: 0.04, green: 0.05, blue: 0.08).ignoresSafeArea())
+        .foregroundStyle(.white)
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(isPresented: $showingCall) {
+            CallScreen(name: chat.name, group: chat.isGroup)
         }
     }
 
-    private func buttonColor(_ key: String) -> Color {
-        if ["÷", "×", "−", "+", "="].contains(key) { return Color.orange }
-        if ["AC", "+/-", "%"].contains(key) { return Color(white: 0.62) }
-        return Color(white: 0.20)
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        chat.messages.append(ChatMessage(text: text, isMine: true))
+        draft = ""
+        onUpdate(chat)
     }
+}
 
-    private func textColor(_ key: String) -> Color {
-        ["AC", "+/-", "%"].contains(key) ? .black : .white
-    }
+struct NewChatSheet: View {
+    let title: String
+    let group: Bool
+    var onCreate: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
 
-    private func tap(_ key: String) {
-        if let digit = Int(key), (0...9).contains(digit) {
-            if startsNewNumber || display == "0" {
-                display = key
-                startsNewNumber = false
-            } else if display.count < 12 {
-                display += key
-            }
-            return
-        }
-
-        switch key {
-        case "AC":
-            display = "0"
-            storedValue = nil
-            pendingOperation = nil
-            lastOperation = nil
-            lastOperand = nil
-            startsNewNumber = true
-        case ".":
-            if startsNewNumber {
-                display = "0."
-                startsNewNumber = false
-            } else if !display.contains(".") {
-                display += "."
-            }
-        case "+/-":
-            if let value = currentValue { display = format(-value) }
-        case "%":
-            if let value = currentValue { display = format(value / 100) }
-        case "+", "−", "×", "÷":
-            if let value = currentValue {
-                if let previous = storedValue, let operation = pendingOperation {
-                    let result = calculate(previous, value, operation)
-                    display = format(result)
-                    storedValue = result
-                } else {
-                    storedValue = value
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(group ? "Group details" : "Contact") {
+                    TextField(group ? "Group name" : "Person's name", text: $name)
+                }
+                if group {
+                    Section("Members") {
+                        Label("You", systemImage: "person.fill")
+                        Label("Alex (demo contact)", systemImage: "person")
+                        Label("Sam (demo contact)", systemImage: "person")
+                    }
+                }
+                Section {
+                    Text(group ? "This creates a sample group on this device." : "This creates a sample conversation on this device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
-            pendingOperation = key
-            startsNewNumber = true
-            lastOperation = nil
-            lastOperand = nil
-        case "=":
-            if let operation = pendingOperation, let first = storedValue, let second = currentValue {
-                let result = calculate(first, second, operation)
-                display = format(result)
-                lastOperation = operation
-                lastOperand = second
-                storedValue = nil
-                pendingOperation = nil
-                startsNewNumber = true
-            } else if let operation = lastOperation, let operand = lastOperand, let first = currentValue {
-                display = format(calculate(first, operand, operation))
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !value.isEmpty else { return }
+                        onCreate(value)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
             }
-        default:
-            break
         }
+        .preferredColorScheme(.dark)
     }
+}
 
-    private var currentValue: Double? { Double(display) }
+struct CallScreen: View {
+    let name: String
+    let group: Bool
+    @Environment(\.dismiss) private var dismiss
 
-    private func calculate(_ a: Double, _ b: Double, _ operation: String) -> Double {
-        switch operation {
-        case "+": return a + b
-        case "−": return a - b
-        case "×": return a * b
-        case "÷": return b == 0 ? 0 : a / b
-        default: return b
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.05, green: 0.12, blue: 0.20), .black],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+            VStack(spacing: 18) {
+                Spacer()
+                Image(systemName: group ? "person.3.fill" : "person.fill")
+                    .font(.system(size: 52))
+                    .foregroundStyle(.cyan)
+                    .frame(width: 132, height: 132)
+                    .background(.white.opacity(0.08), in: Circle())
+                Text(name).font(.largeTitle.bold())
+                Text("Call preview")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.6))
+                Text("Calling isn't connected yet")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "phone.down.fill")
+                        .font(.title)
+                        .foregroundStyle(.white)
+                        .frame(width: 72, height: 72)
+                        .background(.red, in: Circle())
+                }
+                Text("End")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.bottom, 34)
+            }
+            .foregroundStyle(.white)
         }
-    }
-
-    private func format(_ value: Double) -> String {
-        guard value.isFinite else { return "Error" }
-        if abs(value) < 1_000_000_000_000, value.rounded() == value {
-            return String(Int64(value))
-        }
-        return String(format: "%.8g", value)
     }
 }
