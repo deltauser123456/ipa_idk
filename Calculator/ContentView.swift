@@ -1,30 +1,121 @@
 import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
 
-struct ChatMessage: Identifiable {
-    let id = UUID()
-    let text: String
-    let isMine: Bool
-    let time = Date()
+private let db = Firestore.firestore()
+
+struct RootView: View {
+    @State private var user: User? = Auth.auth().currentUser
+    @State private var authListener: AuthStateDidChangeListenerHandle?
+
+    var body: some View {
+        Group {
+            if let user {
+                ChatHomeView(user: user)
+            } else {
+                AuthView()
+            }
+        }
+        .onAppear {
+            if authListener == nil {
+                authListener = Auth.auth().addStateDidChangeListener { _, user in
+                    self.user = user
+                }
+            }
+        }
+        .onDisappear {
+            if let authListener {
+                Auth.auth().removeStateDidChangeListener(authListener)
+                self.authListener = nil
+            }
+        }
+    }
 }
 
-struct ChatConversation: Identifiable {
-    let id = UUID()
-    var name: String
-    var members: [String]
-    var isGroup: Bool
-    var messages: [ChatMessage]
-    var lastMessage: String { messages.last?.text ?? "Start a conversation" }
+struct AuthView: View {
+    @State private var email = ""
+    @State private var password = ""
+    @State private var isCreating = false
+    @State private var busy = false
+    @State private var error = ""
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.05, blue: 0.08).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 52)).foregroundStyle(.cyan)
+                Text("Chat").font(.largeTitle.bold())
+                Text(isCreating ? "Create your account" : "Sign in to continue")
+                    .foregroundStyle(.white.opacity(0.65))
+                VStack(spacing: 12) {
+                    TextField("Email address", text: $email)
+                        .textContentType(.emailAddress).keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .padding().background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                    SecureField("Password (6+ characters)", text: $password)
+                        .textContentType(isCreating ? .newPassword : .password)
+                        .padding().background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                }
+                if !error.isEmpty {
+                    Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                }
+                Button(action: submit) {
+                    HStack {
+                        if busy { ProgressView().tint(.black) }
+                        Text(isCreating ? "Create account" : "Sign in").bold()
+                    }
+                    .frame(maxWidth: .infinity).padding()
+                    .background(.cyan, in: RoundedRectangle(cornerRadius: 14))
+                    .foregroundStyle(.black)
+                }
+                .disabled(busy || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.count < 6)
+                Button(isCreating ? "Already have an account? Sign in" : "New here? Create an account") {
+                    isCreating.toggle(); error = ""
+                }
+                .font(.footnote).foregroundStyle(.cyan)
+            }
+            .padding(26)
+        }
+    }
+
+    private func submit() {
+        busy = true; error = ""
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let completion: (AuthDataResult?, Error?) -> Void = { result, err in
+            DispatchQueue.main.async {
+                busy = false
+                if let err { error = err.localizedDescription; return }
+                if let user = result?.user {
+                    db.collection("users").document(user.uid).setData([
+                        "email": cleanEmail,
+                        "displayName": user.displayName ?? cleanEmail,
+                        "createdAt": FieldValue.serverTimestamp()
+                    ], merge: true)
+                }
+            }
+        }
+        if isCreating {
+            Auth.auth().createUser(withEmail: cleanEmail, password: password, completion: completion)
+        } else {
+            Auth.auth().signIn(withEmail: cleanEmail, password: password, completion: completion)
+        }
+    }
+}
+
+struct ChatSummary: Identifiable {
+    let id: String
+    let otherEmail: String
+    let lastMessage: String
 }
 
 struct ChatHomeView: View {
-    @State private var chats: [ChatConversation] = [
-        ChatConversation(name: "Alex", members: ["Alex"], isGroup: false,
-                         messages: [ChatMessage(text: "Hey! What's up?", isMine: false)]),
-        ChatConversation(name: "Weekend crew", members: ["Alex", "Sam", "Jordan"], isGroup: true,
-                         messages: [ChatMessage(text: "Anyone free this weekend?", isMine: false)])
-    ]
+    let user: User
+    @State private var chats: [ChatSummary] = []
+    @State private var listener: ListenerRegistration?
     @State private var showingNewChat = false
-    @State private var showingNewGroup = false
+    @State private var recipientEmail = ""
+    @State private var error = ""
 
     var body: some View {
         NavigationStack {
@@ -33,308 +124,207 @@ struct ChatHomeView: View {
                 VStack(spacing: 0) {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("MESSAGES")
-                                .font(.caption.weight(.bold))
-                                .tracking(2)
-                                .foregroundStyle(.cyan)
-                            Text("Chats")
-                                .font(.largeTitle.bold())
+                            Text("MESSAGES").font(.caption.bold()).tracking(2).foregroundStyle(.cyan)
+                            Text("Chats").font(.largeTitle.bold())
                         }
                         Spacer()
                         Button { showingNewChat = true } label: {
-                            Image(systemName: "square.and.pencil")
-                                .font(.title3.weight(.semibold))
-                                .frame(width: 44, height: 44)
-                                .background(Color.white.opacity(0.10), in: Circle())
+                            Image(systemName: "plus").font(.title3.bold())
+                                .foregroundStyle(.black).frame(width: 44, height: 44)
+                                .background(.cyan, in: Circle())
                         }
-                        .accessibilityLabel("New chat")
-                        Menu {
-                            Button { showingNewChat = true } label: {
-                                Label("New solo chat", systemImage: "person")
-                            }
-                            Button { showingNewGroup = true } label: {
-                                Label("New group chat", systemImage: "person.3")
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.title3.bold())
-                                .frame(width: 44, height: 44)
-                                .background(Color.cyan, in: Circle())
-                                .foregroundStyle(.black)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 18)
-                    .padding(.bottom, 22)
-
+                    }.padding()
                     if chats.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "bubble.left.and.bubble.right")
-                                .font(.system(size: 42))
-                                .foregroundStyle(.cyan)
-                            Text("No chats yet")
-                                .font(.title2.bold())
-                                .foregroundStyle(.white)
-                            Text("Start a solo chat or create a group.")
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.6))
-                            Button("Start a chat") { showingNewChat = true }
-                                .font(.headline)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 11)
-                                .background(Color.cyan, in: Capsule())
-                                .foregroundStyle(.black)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .font(.system(size: 44)).foregroundStyle(.cyan)
+                            Text("No chats yet").font(.title2.bold())
+                            Text("Start a chat using someone's account email.")
+                                .font(.subheadline).foregroundStyle(.white.opacity(0.6))
+                            Button("New chat") { showingNewChat = true }
+                                .padding(.horizontal, 20).padding(.vertical, 11)
+                                .background(.cyan, in: Capsule()).foregroundStyle(.black)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: 8) {
+                            LazyVStack(spacing: 9) {
                                 ForEach(chats) { chat in
                                     NavigationLink {
-                                        ConversationView(chat: chat) { updated in
-                                            if let index = chats.firstIndex(where: { $0.id == updated.id }) {
-                                                chats[index] = updated
-                                            }
-                                        }
+                                        LiveConversationView(chat: chat, myUID: user.uid)
                                     } label: {
-                                        ChatRow(chat: chat)
-                                    }
-                                    .buttonStyle(.plain)
+                                        HStack(spacing: 14) {
+                                            Image(systemName: "person.fill")
+                                                .font(.title2).foregroundStyle(.cyan)
+                                                .frame(width: 52, height: 52)
+                                                .background(.cyan.opacity(0.15), in: Circle())
+                                            VStack(alignment: .leading, spacing: 5) {
+                                                Text(chat.otherEmail).font(.headline)
+                                                Text(chat.lastMessage).font(.subheadline)
+                                                    .foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right").font(.caption)
+                                                .foregroundStyle(.white.opacity(0.3))
+                                        }
+                                        .padding(13).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 17))
+                                    }.buttonStyle(.plain)
                                 }
-                            }
-                            .padding(.horizontal, 14)
+                            }.padding(.horizontal, 14)
                         }
                     }
-                    Spacer(minLength: 0)
                     HStack {
-                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
-                            .foregroundStyle(.cyan)
+                        Text(user.email ?? "Signed in").font(.caption).foregroundStyle(.white.opacity(0.5))
                         Spacer()
-                        Label("Calls", systemImage: "phone")
-                            .foregroundStyle(.white.opacity(0.5))
-                        Spacer()
-                        Label("You", systemImage: "person.crop.circle")
-                            .foregroundStyle(.white.opacity(0.5))
-                    }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 16)
-                    .background(Color.white.opacity(0.04))
-                }
+                        Button("Sign out") { try? Auth.auth().signOut() }
+                            .font(.caption.bold()).foregroundStyle(.cyan)
+                    }.padding()
+                }.foregroundStyle(.white)
             }
-            .foregroundStyle(.white)
-            .sheet(isPresented: $showingNewChat) {
-                NewChatSheet(title: "New solo chat", group: false) { name in
-                    chats.insert(ChatConversation(name: name, members: [name], isGroup: false, messages: []), at: 0)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .alert("New chat", isPresented: $showingNewChat) {
+                TextField("Their account email", text: $recipientEmail)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Button("Cancel", role: .cancel) { recipientEmail = "" }
+                Button("Create", action: createChat)
+            } message: {
+                Text("Enter the email address they used to create their Chat account.")
             }
-            .sheet(isPresented: $showingNewGroup) {
-                NewChatSheet(title: "Create group", group: true) { name in
-                    chats.insert(ChatConversation(name: name, members: ["You", "Alex", "Sam"], isGroup: true, messages: []), at: 0)
-                }
-            }
+            .alert("Couldn't create chat", isPresented: Binding(get: { !error.isEmpty }, set: { if !$0 { error = "" } })) {
+                Button("OK", role: .cancel) { error = "" }
+            } message: { Text(error) }
         }
         .tint(.cyan)
+        .onAppear(perform: listen)
+        .onDisappear { listener?.remove(); listener = nil }
     }
-}
 
-struct ChatRow: View {
-    let chat: ChatConversation
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(chat.isGroup ? Color.purple.opacity(0.25) : Color.cyan.opacity(0.18))
-                Image(systemName: chat.isGroup ? "person.3.fill" : "person.fill")
-                    .font(.title2)
-                    .foregroundStyle(chat.isGroup ? .purple : .cyan)
-            }
-            .frame(width: 54, height: 54)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text(chat.name).font(.headline)
-                    Spacer()
-                    Text(chat.messages.isEmpty ? "" : "now")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.4))
+    private func listen() {
+        listener?.remove()
+        listener = db.collection("chats")
+            .whereField("participantUIDs", arrayContains: user.uid)
+            .addSnapshotListener { snapshot, err in
+                guard let docs = snapshot?.documents, err == nil else { return }
+                let values = docs.map { doc -> ChatSummary in
+                    let data = doc.data()
+                    let ids = data["participantUIDs"] as? [String] ?? []
+                    let emails = data["participantEmails"] as? [String] ?? []
+                    let otherIndex = ids.firstIndex(where: { $0 != user.uid }) ?? 0
+                    let otherEmail = otherIndex < emails.count ? emails[otherIndex] : "Chat"
+                    return ChatSummary(id: doc.documentID, otherEmail: otherEmail,
+                                       lastMessage: data["lastMessage"] as? String ?? "Start chatting")
                 }
-                Text(chat.lastMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1)
+                DispatchQueue.main.async { chats = values }
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.25))
+    }
+
+    private func createChat() {
+        let email = recipientEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        recipientEmail = ""
+        guard !email.isEmpty, email != (user.email ?? "").lowercased() else {
+            error = "Enter a different account email."; return
         }
-        .padding(13)
-        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 18))
+        db.collection("users").whereField("email", isEqualTo: email).limit(to: 1).getDocuments { snapshot, err in
+            if let err { error = err.localizedDescription; return }
+            guard let recipient = snapshot?.documents.first else {
+                error = "No Chat account was found for that email. Ask them to create an account first."; return
+            }
+            let otherUID = recipient.documentID
+            let ids = [user.uid, otherUID].sorted()
+            db.collection("chats").whereField("participantUIDs", isEqualTo: ids).limit(to: 1).getDocuments { existing, findError in
+                if let findError { error = findError.localizedDescription; return }
+                if existing?.documents.first != nil { return }
+                let emails = [user.email ?? "", email]
+                db.collection("chats").addDocument(data: [
+                    "participantUIDs": ids,
+                    "participantEmails": emails,
+                    "lastMessage": "Say hello!",
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "updatedAt": FieldValue.serverTimestamp()
+                ]) { createError in
+                    if let createError { error = createError.localizedDescription }
+                }
+            }
+        }
     }
 }
 
-struct ConversationView: View {
-    @State var chat: ChatConversation
-    var onUpdate: (ChatConversation) -> Void
+struct LiveMessage: Identifiable {
+    let id: String
+    let text: String
+    let senderUID: String
+}
+
+struct LiveConversationView: View {
+    let chat: ChatSummary
+    let myUID: String
+    @State private var messages: [LiveMessage] = []
     @State private var draft = ""
-    @State private var showingCall = false
+    @State private var listener: ListenerRegistration?
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(chat.name).font(.headline)
-                    Text(chat.isGroup ? "\(chat.members.count) members" : "Direct message")
-                        .font(.caption).foregroundStyle(.white.opacity(0.5))
-                }
-                Spacer()
-                Button { showingCall = true } label: {
-                    Image(systemName: "phone.fill")
-                        .font(.title3)
-                        .foregroundStyle(.black)
-                        .frame(width: 42, height: 42)
-                        .background(.cyan, in: Circle())
-                }
-                .accessibilityLabel("Call")
-            }
-            .padding()
-            .background(Color.white.opacity(0.04))
-
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(chat.messages) { message in
-                        HStack {
-                            if message.isMine { Spacer(minLength: 55) }
-                            Text(message.text)
-                                .padding(.horizontal, 15)
-                                .padding(.vertical, 11)
-                                .foregroundStyle(message.isMine ? .black : .white)
-                                .background(message.isMine ? Color.cyan : Color.white.opacity(0.10),
-                                            in: RoundedRectangle(cornerRadius: 18))
-                            if !message.isMine { Spacer(minLength: 55) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(messages) { message in
+                            HStack {
+                                if message.senderUID == myUID { Spacer(minLength: 55) }
+                                Text(message.text).padding(.horizontal, 15).padding(.vertical, 11)
+                                    .foregroundStyle(message.senderUID == myUID ? .black : .white)
+                                    .background(message.senderUID == myUID ? Color.cyan : Color.white.opacity(0.11),
+                                                in: RoundedRectangle(cornerRadius: 18))
+                                if message.senderUID != myUID { Spacer(minLength: 55) }
+                            }.id(message.id)
                         }
-                    }
+                    }.padding()
                 }
-                .padding()
+                .onChange(of: messages.count) { _ in
+                    if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
             }
             HStack(spacing: 10) {
                 TextField("Message...", text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08), in: Capsule())
-                    .foregroundStyle(.white)
+                    .lineLimit(1...4).padding(12)
+                    .background(.white.opacity(0.08), in: Capsule()).foregroundStyle(.white)
                 Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.headline.bold())
-                        .foregroundStyle(.black)
-                        .frame(width: 42, height: 42)
-                        .background(.cyan, in: Circle())
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding()
-            .background(Color.black)
+                    Image(systemName: "arrow.up").bold().foregroundStyle(.black)
+                        .frame(width: 42, height: 42).background(.cyan, in: Circle())
+                }.disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }.padding().background(.black)
         }
         .background(Color(red: 0.04, green: 0.05, blue: 0.08).ignoresSafeArea())
         .foregroundStyle(.white)
-        .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(isPresented: $showingCall) {
-            CallScreen(name: chat.name, group: chat.isGroup)
-        }
+        .navigationTitle(chat.otherEmail).navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: listen)
+        .onDisappear { listener?.remove(); listener = nil }
+    }
+
+    private func listen() {
+        listener = db.collection("chats").document(chat.id).collection("messages")
+            .order(by: "createdAt")
+            .addSnapshotListener { snapshot, _ in
+                guard let docs = snapshot?.documents else { return }
+                let newMessages = docs.map { doc in
+                    LiveMessage(id: doc.documentID, text: doc.data()["text"] as? String ?? "",
+                                senderUID: doc.data()["senderUID"] as? String ?? "")
+                }
+                DispatchQueue.main.async { messages = newMessages }
+            }
     }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        chat.messages.append(ChatMessage(text: text, isMine: true))
         draft = ""
-        onUpdate(chat)
-    }
-}
-
-struct NewChatSheet: View {
-    let title: String
-    let group: Bool
-    var onCreate: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section(group ? "Group details" : "Contact") {
-                    TextField(group ? "Group name" : "Person's name", text: $name)
-                }
-                if group {
-                    Section("Members") {
-                        Label("You", systemImage: "person.fill")
-                        Label("Alex (demo contact)", systemImage: "person")
-                        Label("Sam (demo contact)", systemImage: "person")
-                    }
-                }
-                Section {
-                    Text(group ? "This creates a sample group on this device." : "This creates a sample conversation on this device.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+        let chatRef = db.collection("chats").document(chat.id)
+        chatRef.collection("messages").addDocument(data: [
+            "text": text,
+            "senderUID": myUID,
+            "createdAt": FieldValue.serverTimestamp()
+        ]) { error in
+            if error == nil {
+                chatRef.updateData(["lastMessage": text, "updatedAt": FieldValue.serverTimestamp()])
             }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !value.isEmpty else { return }
-                        onCreate(value)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-}
-
-struct CallScreen: View {
-    let name: String
-    let group: Bool
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        ZStack {
-            LinearGradient(colors: [Color(red: 0.05, green: 0.12, blue: 0.20), .black],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            VStack(spacing: 18) {
-                Spacer()
-                Image(systemName: group ? "person.3.fill" : "person.fill")
-                    .font(.system(size: 52))
-                    .foregroundStyle(.cyan)
-                    .frame(width: 132, height: 132)
-                    .background(.white.opacity(0.08), in: Circle())
-                Text(name).font(.largeTitle.bold())
-                Text("Call preview")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.6))
-                Text("Calling isn't connected yet")
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.45))
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "phone.down.fill")
-                        .font(.title)
-                        .foregroundStyle(.white)
-                        .frame(width: 72, height: 72)
-                        .background(.red, in: Circle())
-                }
-                Text("End")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.6))
-                    .padding(.bottom, 34)
-            }
-            .foregroundStyle(.white)
         }
     }
 }
