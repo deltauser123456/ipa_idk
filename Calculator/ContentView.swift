@@ -68,9 +68,24 @@ struct ChatHomeView: View {
                     .padding(.bottom, 22)
 
                     if chats.isEmpty {
-                        ContentUnavailableView("No chats yet", systemImage: "bubble.left.and.bubble.right",
-                                               description: Text("Start a solo chat or create a group."))
-                            .foregroundStyle(.white)
+                        VStack(spacing: 12) {
+                            Image(systemName: "bubble.left.and.bubble.right")
+                                .font(.system(size: 42))
+                                .foregroundStyle(.cyan)
+                            Text("No chats yet")
+                                .font(.title2.bold())
+                                .foregroundStyle(.white)
+                            Text("Start a solo chat or create a group.")
+                                .font(.subheadline)
+                                .foregroundStyle(.white.opacity(0.6))
+                            Button("Start a chat") { showingNewChat = true }
+                                .font(.headline)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 11)
+                                .background(Color.cyan, in: Capsule())
+                                .foregroundStyle(.black)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 8) {
