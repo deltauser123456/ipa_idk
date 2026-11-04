@@ -167,7 +167,7 @@ struct ChatCallButtons: View {
             busy = false
             if call.isConnected { status = "Connected" }
             else if let id = activeCallID {
-                calls.document(id).updateData([
+                try? await calls.document(id).updateData([
                     "status": "ended",
                     "updatedAt": FieldValue.serverTimestamp()
                 ])
@@ -179,7 +179,7 @@ struct ChatCallButtons: View {
         Task {
             await call.disconnect()
             if let id = activeCallID {
-                calls.document(id).updateData([
+                try? await calls.document(id).updateData([
                     "status": "ended",
                     "updatedAt": FieldValue.serverTimestamp()
                 ])
