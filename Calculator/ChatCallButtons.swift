@@ -31,7 +31,7 @@ struct ChatCallButtons: View {
             .buttonStyle(.bordered)
 
             if let incomingCallID, !call.isConnected {
-                Text("Incoming \\(incomingType == "video" ? "video" : "voice") call")
+                Text("Incoming \(incomingType == "video" ? "video" : "voice") call")
                     .font(.subheadline.bold())
                 HStack {
                     Button("Accept") { acceptCall(id: incomingCallID) }
@@ -139,7 +139,7 @@ struct ChatCallButtons: View {
             "calleeUID": otherUID,
             "status": "ringing",
             "type": video ? "video" : "audio",
-            "roomName": "chat_\\(chatID)",
+            "roomName": "chat_\(chatID)",
             "createdAt": FieldValue.serverTimestamp()
         ]) { error in
             if let error {
