@@ -22,10 +22,10 @@ final class CallSession: ObservableObject {
             let endpoint = URL(string: "https://chat-call-server.onrender.com/token")!
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
-            request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \\(idToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "roomName": "chat_\(chatID)"
+                "roomName": "chat_\\(chatID)"
             ])
 
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -41,6 +41,16 @@ final class CallSession: ObservableObject {
                 try await liveRoom.localParticipant.setCamera(enabled: true)
             }
             isConnected = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func switchCamera() async {
+        guard let track = room?.localParticipant.localVideoTracks.first?.track as? LocalVideoTrack,
+              let capturer = track.capturer as? CameraCapturer else { return }
+        do {
+            _ = try await capturer.switchCameraPosition()
         } catch {
             errorMessage = error.localizedDescription
         }
