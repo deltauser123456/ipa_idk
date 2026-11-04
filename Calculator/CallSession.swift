@@ -22,10 +22,10 @@ final class CallSession: ObservableObject {
             let endpoint = URL(string: "https://chat-call-server.onrender.com/token")!
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
-            request.setValue("Bearer \\(idToken)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "roomName": "chat_\\(chatID)"
+                "roomName": "chat_\(chatID)"
             ])
 
             let (data, response) = try await URLSession.shared.data(for: request)
