@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import LiveKit
 
 struct ChatCallButtons: View {
     let chatID: String
@@ -42,7 +43,22 @@ struct ChatCallButtons: View {
                 }
             }
 
-            if call.isConnected {
+            if call.isConnected, let room = call.room {
+                if let localTrack = room.localParticipant.localVideoTracks.first?.track as? VideoTrack {
+                    SwiftUIVideoView(localTrack)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 240)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                ForEach(Array(room.remoteParticipants.values), id: \.sid) { participant in
+                    if let publication = participant.videoTracks.first,
+                       let remoteTrack = publication.track as? VideoTrack {
+                        SwiftUIVideoView(remoteTrack)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 240)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                }
                 HStack {
                     Button(muted ? "Unmute" : "Mute") {
                         muted.toggle()
