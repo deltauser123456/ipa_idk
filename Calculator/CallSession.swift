@@ -7,7 +7,9 @@ final class CallSession: ObservableObject {
     @Published private(set) var isConnected = false
     @Published var errorMessage: String?
 
-    private let room = Room()
+    @Published private(set) var room: Room? = nil
+
+    private var activeRoom: Room { if let room { return room }; let newRoom = Room(); room = newRoom; return newRoom }
 
     func connect(chatID: String, video: Bool) async {
         guard let user = Auth.auth().currentUser else {
@@ -32,10 +34,11 @@ final class CallSession: ObservableObject {
                               userInfo: [NSLocalizedDescriptionKey: "Call server rejected the request."])
             }
             let payload = try JSONDecoder().decode(TokenResponse.self, from: data)
-            try await room.connect(url: payload.serverUrl, token: payload.token)
-            try await room.localParticipant.setMicrophone(enabled: true)
+            let liveRoom = activeRoom
+            try await liveRoom.connect(url: payload.serverUrl, token: payload.token)
+            try await liveRoom.localParticipant.setMicrophone(enabled: true)
             if video {
-                try await room.localParticipant.setCamera(enabled: true)
+                try await liveRoom.localParticipant.setCamera(enabled: true)
             }
             isConnected = true
         } catch {
@@ -45,7 +48,7 @@ final class CallSession: ObservableObject {
 
     func setMuted(_ muted: Bool) async {
         do {
-            try await room.localParticipant.setMicrophone(enabled: !muted)
+            try await activeRoom.localParticipant.setMicrophone(enabled: !muted)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -53,15 +56,16 @@ final class CallSession: ObservableObject {
 
     func setCameraEnabled(_ enabled: Bool) async {
         do {
-            try await room.localParticipant.setCamera(enabled: enabled)
+            try await activeRoom.localParticipant.setCamera(enabled: enabled)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     func disconnect() async {
-        await room.disconnect()
+        if let room { await room.disconnect() }
         isConnected = false
+        room = nil
     }
 }
 
