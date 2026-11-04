@@ -31,7 +31,7 @@ struct ChatCallButtons: View {
             .buttonStyle(.bordered)
 
             if let incomingCallID, !call.isConnected {
-                Text("Incoming \(incomingType == "video" ? "video" : "voice") call")
+                Text("Incoming \\(incomingType == "video" ? "video" : "voice") call")
                     .font(.subheadline.bold())
                 HStack {
                     Button("Accept") { acceptCall(id: incomingCallID) }
@@ -44,22 +44,40 @@ struct ChatCallButtons: View {
             }
 
             if call.isConnected, let room = call.room {
-                if let localTrack = room.localParticipant.localVideoTracks.first?.track as? VideoTrack {
-                    SwiftUIVideoView(localTrack)
+                ZStack(alignment: .bottomTrailing) {
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color.black)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 240)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-                ForEach(Array(room.remoteParticipants.values), id: \.sid) { participant in
-                    if let publication = participant.videoTracks.first,
+                        .frame(height: 430)
+
+                    if let participant = room.remoteParticipants.values.first,
+                       let publication = participant.videoTracks.first,
                        let remoteTrack = publication.track as? VideoTrack {
                         SwiftUIVideoView(remoteTrack)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 240)
+                            .frame(height: 430)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                    } else {
+                        Text("Waiting for the other camera…")
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    if let localTrack = room.localParticipant.localVideoTracks.first?.track as? VideoTrack {
+                        SwiftUIVideoView(localTrack)
+                            .frame(width: 118, height: 166)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.8), lineWidth: 1))
+                            .padding(12)
                     }
                 }
-                HStack {
+
+                HStack(spacing: 18) {
+                    Button {
+                        Task { await call.switchCamera() }
+                    } label: {
+                        Label("Flip camera", systemImage: "arrow.triangle.2.circlepath.camera")
+                    }
                     Button(muted ? "Unmute" : "Mute") {
                         muted.toggle()
                         Task { await call.setMuted(muted) }
@@ -121,7 +139,7 @@ struct ChatCallButtons: View {
             "calleeUID": otherUID,
             "status": "ringing",
             "type": video ? "video" : "audio",
-            "roomName": "chat_\(chatID)",
+            "roomName": "chat_\\(chatID)",
             "createdAt": FieldValue.serverTimestamp()
         ]) { error in
             if let error {
